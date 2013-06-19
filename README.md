@@ -23,8 +23,13 @@ when the last packet was received and total data received by server.
 The client the computes and displays the throughput.
 
 Usage: ./c_perf [server] [port] [transport protocol] [network protocol] [datasize]
+
 	Where 
+
 		network protocol can be 4 (ipv4) or 6 (ipv6)
+
 		transport protocol can be TCP or UDP (case sensitive)
+
 		datasize for TCP is number of bytes
+
 		datasize for UDP is number of messages
