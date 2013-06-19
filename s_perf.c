@@ -1,3 +1,29 @@
+/* s_perf.c
+
+	This is the server part of the performance measurement tool
+
+	Server listens on a port using TCP socket and waits for client to connect.
+	The TCP port is according to the network protocol specified. After the client
+	connects, the server and the client program do handshake from which server
+	learns how much data will the client send, what transport layer protocol to use.
+	If transport layer protocol is UDP, server opens a new UDP socket on same port
+	number where he is listening. For TCP, it just uses the same connection. 
+	After this, the test is performed on appropriate connection and then the server
+	sends the information to client which includes when it received the last data
+	chunk and the total data it received.
+
+	Usage: ./s_perf [port] [network protocol] 
+
+		Where 
+			network protocol can be 4 (ipv4) or 6 (ipv6)
+	
+	NOTE: The assumption is that NTP daemon is running on both client and server
+	machine to keep the clocks in sync
+
+*/
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -506,7 +532,7 @@ void check_input (int c, char * v[]) {
 
 	/* Not enough args? */
 	if (c < 3) {
-		printf("Usage: %s [port] [protocol] \n\tWhere protocol can be 4 (ipv4) or 6 (ipv6)\n",v[0]);
+		printf("Usage: %s [port] [protocol] \n\n\tWhere\n\t\tprotocol can be 4 (ipv4) or 6 (ipv6)\n",v[0]);
 		exit(1);
 		}
 	

@@ -532,8 +532,11 @@ void check_input (int c, char * v[]) {
 	/* Not enough arguments */
 	if (c < 6) {
 		printf("Usage: %s [server] [port] [transport protocol] [network protocol] [datasize]\n\
-		Where network protocol can be 4 (ipv4) or 6 (ipv6)\n\
-		and transport protocol can be TCP or UDP (case sensitive)\n",v[0]);
+		Where\n\
+			network protocol can be 4 (ipv4) or 6 (ipv6)\n\
+			transport protocol can be TCP or UDP (case sensitive)\n\
+			datasize for TCP is number of bytes\n\
+			datasize for UDP is number of messages\n",v[0]);
 		exit(1);
 		}
 	

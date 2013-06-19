@@ -29,3 +29,25 @@ The client the computes and displays the throughput.
 		transport protocol can be TCP or UDP (case sensitive)
 		datasize for TCP is number of bytes
 		datasize for UDP is number of messages
+
+
+
+
+
+Server Program
+---------------
+
+Server listens on a port using TCP socket and waits for client to connect.
+The TCP port is according to the network protocol specified. After the client
+connects, the server and the client program do handshake from which server
+learns how much data will the client send, what transport layer protocol to use.
+If transport layer protocol is UDP, server opens a new UDP socket on same port
+number where he is listening. For TCP, it just uses the same connection. 
+After this, the test is performed on appropriate connection and then the server
+sends the information to client which includes when it received the last data
+chunk and the total data it received.
+
+	Usage: ./s_perf [port] [network protocol] 
+
+	Where 
+		network protocol can be 4 (ipv4) or 6 (ipv6)
