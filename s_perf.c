@@ -35,10 +35,10 @@ struct test_info {
 	int ctrlsock;
 
 	/* These are test parameters */
-	int protocol;
-	int domain;
-	int t_prot;
-	long int data_info;
+	int n_prot;						/* This is network protocol */
+	int domain;						/* AF_INET or AF_INET6 */
+	int t_prot;						/* Transport protocol (TCP = 1, UDP = 0) */
+	long int data_info;				/* Data to be transfered (bytes/packets) */
 	} ti;
 
 
@@ -63,19 +63,24 @@ int main (int argc, char * argv[]) {
 
 	check_input(argc,argv);
 	
-	int servsock;					/* socket descriptors for server socket and accepted socket */
+	int servsock;					/* socket descriptors for server socket (we listen on this) */
 	int status;
 	socklen_t client_len;			/* length of client address */
 
-	int type = SOCK_STREAM;			/* type set to TCP for now */
+	int type = SOCK_STREAM;			/* Type of control connection is TCP */
 	
 	ti.ctrl_port = atoi(argv[1]);		/* Convert the port from string to number */
-	ti.protocol = atoi(argv[2]);		/* Store the network protocol to be used */
+	ti.n_prot = atoi(argv[2]);			/* Store the network protocol to be used */
 
 	/* We are supposed to support both ipv4 and ipv6. So depending on the protocol,
-	we will have to create different address structures and address family for the socket */
+	we will have to create different address structures and address family for the sockets.
+	
+	We have to do this for both ctrl and test socket. 
+	
+	On client, the switch-case is simple because of the use of getaddrinfo().
+	I should try to use it here also. */
 
-	switch (ti.protocol) {
+	switch (ti.n_prot) {
 		case 4: ti.domain = AF_INET;
 				ti.ctrl_addr = (struct sockaddr *) &ti.ctrl4;
 				ti.test_addr = (struct sockaddr *) &ti.test4;
@@ -120,7 +125,7 @@ int main (int argc, char * argv[]) {
 				break;
 
 		default:
-				fprintf(stderr,"[ERROR]: Invalid protocol %d\n",ti.protocol);
+				fprintf(stderr,"[ERROR]: Invalid protocol %d\n",ti.n_prot);
 				exit(1);
 		}
 
@@ -165,12 +170,26 @@ int main (int argc, char * argv[]) {
 
 
 
-/* perf_test: Heart of the program. Currently a dummy placeholder. We have no heart (yet) */
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* perf_test: This function first initiates the handshake with client, then it calls
+	appropriate test function. It then sends the client timestamp when we received 
+	last chunk of data and total data we received */
 
 void perf_test () {
 
-	long int received = 0;
 	long int received_data = 0;
 	char buff[BUFF_SIZE];
 	int stat = 0;
@@ -180,10 +199,7 @@ void perf_test () {
 	
 	shake_hands();
 
-	/* Now till the time we receive all the data, keep on doing the read call.
-	Don't worry about the loss. Its TCP for now */
-
-
+	/* Call the test function according to the transport layer protocol we are using */
 	if (ti.t_prot == 1)
 		received_data = run_tcp_test();
 	else if (ti.t_prot == 0)
@@ -197,8 +213,8 @@ void perf_test () {
 	clock_gettime(CLOCK_REALTIME, &end);
 
 	/* Now send this as a message to the client so that it knows when the last chunk was
-	received */
-
+	received. The sending is done by converting sec and nsec numbers into strings. 
+	Apparently, just copying the structure into buffer and sending it doesn't work. */
 
 	int len = 0;
 	len = itoa(end.tv_sec, buff);
@@ -226,6 +242,7 @@ void perf_test () {
 	if (stat != len+1)
 		raise_error("[ERROR]: Sending the info about received data failed");
 	printf("[INFO]: Sent information about received data to client\n");
+
 	return;
 	}
 
@@ -233,6 +250,16 @@ void perf_test () {
 
 
 
+
+
+
+
+
+
+
+/* run_tcp_test: This function keeps on receiving the data from the client
+	till the time we have received the data expected to receive. It then
+	returns the total number of bytes received to the caller */
 
 long int run_tcp_test() {
 
@@ -259,6 +286,21 @@ long int run_tcp_test() {
 
 
 
+
+
+
+
+/* run_udp_test: This function is trickier than TCP. As UDP is unreliable, we
+	dont know how many messages will be dropped. We cant even rely on message
+	numbers entirely because the last message itself can be dropped causing is
+	to wait too long.
+
+	Instead, here we will wait for message to arrive for 1 sec. We will do it
+	as many number of times as we are expected to receive a message. We will 
+	maintain a count of how many datagrams we received as well as how many
+	bytes we received. Then we will return the total number of received bytes */
+
+
 long int run_udp_test() {
 
 
@@ -274,9 +316,14 @@ long int run_udp_test() {
 	t.tv_sec = 1;
 	t.tv_usec = 0;
 
+	/* Set the timeout for the socket to 1 sec. If we don't receive the message
+	in one sec, then probably the message is lost */
 	if ( setsockopt(ti.testsock, SOL_SOCKET, SO_RCVTIMEO, &t, sizeof(t)) < 0)
 		raise_error("[ERROR]: Could not set timeout on the test socket");
 	
+	/* Receive messages. Note the missing error check. We dont want to exit
+	on timeout error, and adding logic to check which error occurred doesnt seem
+	so important (for now atleast) */
 	for (count = 0; count <= ti.data_info+1; count++) {
 
 		stat = 0;
@@ -304,7 +351,7 @@ long int run_udp_test() {
 		1. Receive indication that client is ready for handshake
 		2. Receive information about the transport layer protocol
 		2. Receive information about the data size
-		4*. Receive confirmation that clock is synced on client
+		4*. Receive confirmation that clock is synced on client (not implemented)
 		5. Send ready indicator 
 */
 
@@ -319,9 +366,12 @@ void shake_hands () {
 	int read_ele, wrote_ele;
 	ti.t_prot = -1;
 
-	bzero(buff,bsize);
+
+
 
 	/* receive "ready" from client */
+	bzero(buff,bsize);
+
 	read_ele = read(ti.ctrlsock, buff, 5);
 	if (read_ele < 0)
 		raise_error("[ERROR]: Read failed during handshake.");
@@ -331,14 +381,18 @@ void shake_hands () {
 	printf("[INFO]: Client ready for handshake\n");
 
 	
-	bzero(buff,bsize);
+
+
 
 	/* receive transport layer protocol */
+	bzero(buff,bsize);
+
 	read_ele = read(ti.ctrlsock, buff, 3);
 	if (read_ele < 0)
 		raise_error("[ERROR]: Read failed during handshake.");
 	
 
+	/* For convinience, store the transport layer protocol as int. TCP = 1, UDP = 0 */
 	if (strcmp(buff,"TCP") == 0) {
 		printf("[INFO]: Using TCP in transport layer\n");
 		ti.t_prot = 1;
@@ -352,7 +406,7 @@ void shake_hands () {
 	
 
 	/* If we are using TCP in transport layer, then receive datasize string from client. 
-	This should not be more than 10 characters (we are not expecting GBs of data.
+	This should not be more than 10 characters (we are not expecting GBs of data).
 	If we are using UDP in transport layer then receive number of messages from the client
 	*/
 
@@ -387,16 +441,16 @@ void shake_hands () {
 
 	bzero(buff,bsize);
 
-	/* Now we have to tell the client about the port number on which we are going to
-	conduct the test. 
-		For UDP, we will open a new socket and accept connection there.
+	/* Now we have to set up a test connection (if any)
+		For UDP, we will open a new socket and accept connection there. The port number will be 
+			the same port where we are listening for ctrl connection
 		For TCP, we will just continue on this socket only.
 	*/
 
 	if (ti.t_prot == 1) {
 
 		/* It is easy for TCP, we will use the same connection. So just copy the socket
-		descriptor and port number (this is actually a port number where server is running)
+		descriptor and port number (this is actually a port number where server is listening)
 		The port number is to be used by client to check if we are setting up new server
 		to accept UDP connection */
 		ti.test_port = ti.ctrl_port;
@@ -407,45 +461,21 @@ void shake_hands () {
 	else if (ti.t_prot == 0) {
 		
 		/* For UDP, we have to create a UDP socket and bind. This is painful but important.
-		First we create a server listening for connection using UDP socket *and send client
-		its port number*. We are doing this in current code block.*/
-
+		We create a UDP socket on the same port number where server is listening. This is
+		allowed because UDP and TCP sockets are different */
 		ssock = socket(ti.domain, SOCK_DGRAM, 0);
 		if (ssock < 0)
 			raise_error("[ERROR]: Could not create socket for test connection");
 
+		/* Bind with test address. This has SOCK_DGRAM type specified */
 		if ( bind(ssock, ti.test_addr, ti.addr_size) < 0 )
 			raise_error("[ERROR]: Could not bind for test connection");
-		ti.testsock = ssock;
+		ti.testsock = ssock;		/* set the test socket descriptor */
 
 		}
 	else 
 		raise_error("[ERROR]: Received invalid transport layer protocol");
 
-
-	/* Now we have to inform client where we are listening for test connection.
-	If this port number is same as where our first server was listening, that
-	will mean we are using TCP and client will not open a new connection. Else
-	it will have to create a UDP socket and connect to UDP perf server on
-	given port 
-	itoa(ti.test_port, buff);
-	wrote_ele = write(ti.ctrlsock, buff, 10);
-	if (wrote_ele <= 0)
-		raise_error("[ERROR]: Could not convey test port to client");*/
-
-
-	/* Now if we are using UDP, we have to wait till client connects on the port using
-	UDP socket 
-
-	if (ti.t_prot == 0) {
-		int cli_size;
-		cli_size = sizeof(*ti.cli_addr);
-		ti.testsock = accept(ssock, ti.cli_addr, &cli_size);
-		
-		if (ti.testsock < 0)
-			raise_error("[ERROR]: Could not accept test connection from client");
-		printf("[INFO]: Accepted the client UDP test connection\n");
-		}*/
 
 	bzero(buff,bsize);
 
@@ -460,22 +490,33 @@ void shake_hands () {
 	}
 
 
+
+
+
+
+
+
+
+
 /* check_input: This function is to check that the input to this program are proper. This
 	includes checking the number of arguments and their types */
 
 
 void check_input (int c, char * v[]) {
 
+	/* Not enough args? */
 	if (c < 3) {
 		printf("Usage: %s [port] [protocol] \n\tWhere protocol can be 4 (ipv4) or 6 (ipv6)\n",v[0]);
 		exit(1);
 		}
 	
+	/* The port number should not be special */
 	if (atoi(v[1]) < 2000) {
 		fprintf(stderr,"The input port must be greater than 2000");
 		exit(1);
 		}
 	
+	/* Network protocol has to be ipv4 or ipv6 (4/6) */
 	if (atoi(v[2]) != 4 && atoi(v[2]) != 6) {
 		fprintf(stderr,"Invalid protocol number %d\n",atoi(v[2]));
 		exit(1);
@@ -501,7 +542,7 @@ void raise_error (const char * msg) {
 /* itoa: This function converts a given integer into a string. It assumes
 	that the integer will not be a negative number (which is our case).
 	NOTE: In case of 0, it will generate a C-string as "0\0". Returns 
-	length of the C-string*/
+	length of the C-string excluding the null character (1 for our example) */
 
 int itoa (long int a, char * i) {
 	
