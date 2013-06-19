@@ -22,7 +22,7 @@ At the end, it receives the information from the server about the time
 when the last packet was received and total data received by server.
 The client the computes and displays the throughput.
 
-Usage: ./c_perf [server] [port] [transport protocol] [network protocol] [datasize]
+	Usage: ./c_perf [server] [port] [transport protocol] [network protocol] [datasize]
 
 	Where 
 
